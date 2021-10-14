@@ -75,7 +75,7 @@ def sigmoid_fit(calibration, fit_name, params, graph = True):
     print(coefficients)
 
     if graph:
-        graph_2d_data(sigmoid, measured_data, medians, standard_deviations, coefficients, fit_name, 'sigmoid', 0, max([max(sublist) for sublist in measured_data]), 500)
+        graph_2d_data(sigmoid, measured_data, medians, standard_deviations, coefficients, fit_name, 'sigmoid', params, 0, max([max(sublist) for sublist in measured_data]), 500)
     return create_fit(coefficients, fit_name, "sigmoid", time.time(), params)
 
 def linear_fit(calibration, fit_name, params, graph = True):
@@ -95,7 +95,7 @@ def linear_fit(calibration, fit_name, params, graph = True):
         coefficients.append(paramlin.tolist())
 
     if graph:
-        graph_2d_data(linear, medians, measured_data, standard_deviations, coefficients, fit_name, 'linear', 500, 3000, 50)
+        graph_2d_data(linear, medians, measured_data, standard_deviations, coefficients, fit_name, params, 'linear', 500, 3000, 50)
 
     return create_fit(coefficients, fit_name, "linear", time.time(), params)
 
@@ -145,7 +145,7 @@ def three_dimension_fit(calibration, fit_name, params, graph = True):
 
     return create_fit(coefficients, fit_name, '3d', time.time(), params)
 
-def graph_2d_data(func, measured_data, medians, standard_deviations, coefficients, fit_name, fit_type, space_min, space_max, space_step):
+def graph_2d_data(func, measured_data, medians, standard_deviations, coefficients, fit_name, fit_type, params, space_min, space_max, space_step):
     linear_space = np.linspace(space_min, space_max, space_step)
     fig, ax = plt.subplots(4, 4)
     fig.suptitle("Fit Name: " + fit_name)
@@ -154,8 +154,23 @@ def graph_2d_data(func, measured_data, medians, standard_deviations, coefficient
         ax[i //4, (i % 4)].errorbar(measured_data[i], medians[i], yerr=standard_deviations[i], fmt='none')
         ax[i // 4, (i % 4)].plot(linear_space, func(linear_space, *coefficients[i]), markersize = 1.5, label = None)
         ax[i // 4, (i % 4)].set_title('Vial: ' + str(i))
-        ax[i // 4, (i % 4)].ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+        ax[i // 4, (i % 4)].ticklabel_format(style='sci', axis='y', scilimits=(0,1))
+
+        if "od_135" in params:
+            ax[i // 4, (i % 4)].set_xlim([-.1, 0.8])
+            ax[i // 4, (i % 4)].set_ylim([0, 60000])
+
+        elif "od_90" in params:
+            # Plot parameters for OD 90
+            pass
+
+        elif "temp" in params:
+            # Plot parameters for Temp
+            ax[i // 4, (i % 4)].set_xlim([1000, 2500])
+            ax[i // 4, (i % 4)].set_ylim([20, 50])
+
     plt.subplots_adjust(hspace = 0.6)
+
     plt.show()
 
 def graph_3d_data(func, datas, coefficients, fit_name):

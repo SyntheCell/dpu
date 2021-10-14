@@ -55,7 +55,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
     ##### Turbidostat Settings #####
     #Tunable settings for overflow protection, pump scheduling etc. Unlikely to change between expts
 
-    time_out = 5 #(sec) additional amount of time to run efflux pump
+    time_out = 10 #(sec) additional amount of time to run efflux pump
     pump_wait = 3 # (min) minimum amount of time to wait between pump events
 
     ##### End of Turbidostat Settings #####
@@ -96,6 +96,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
 
             #if recently exceeded upper threshold, note end of growth curve in ODset, allow dilutions to occur and growthrate to be measured
             if (average_OD > upper_thresh[x]) and (ODset != lower_thresh[x]):
+                print(f'Vial {x}: ready for dilution (OD={average_OD} > {upper_thresh[x]})')
                 text_file = open(ODset_path, "a+")
                 text_file.write("{0},{1}\n".format(elapsed_time,
                                                    lower_thresh[x]))
@@ -106,6 +107,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
 
             #if have approx. reached lower threshold, note start of growth curve in ODset
             if (average_OD < (lower_thresh[x] + (upper_thresh[x] - lower_thresh[x]) / 3)) and (ODset != upper_thresh[x]):
+                print(f'Vial {x}: dilution succeeded (OD={average_OD} near {lower_thresh[x]})')
                 text_file = open(ODset_path, "a+")
                 text_file.write("{0},{1}\n".format(elapsed_time, upper_thresh[x]))
                 text_file.close()
@@ -128,6 +130,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
                 last_pump = data[len(data)-1][0]
                 if ((elapsed_time - last_pump)*60) >= pump_wait: # if sufficient time since last pump, send command to Arduino
                     logger.info('turbidostat dilution for vial %d' % x)
+                    print(f'Vial {x}: dilution command sent')
                     # influx pump
                     MESSAGE[x] = str(time_in)
                     # efflux pump
@@ -139,6 +142,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
                     text_file = open(file_path, "a+")
                     text_file.write("{0},{1}\n".format(elapsed_time, time_in))
                     text_file.close()
+
         else:
             logger.debug('not enough OD measurements for vial %d' % x)
 

@@ -3,7 +3,7 @@
 
 {% block bokeh_script %}
 
-
+{{summary_script|safe}}
 
 {% endblock %}
 
@@ -22,7 +22,11 @@
 
     <a href="{% url 'home' %}{{experiment}}/dilutions" class="btn btn-default btn">Dilutions</a>
 
+    <a href="{% url 'home' %}{{experiment}}/bker" class="btn btn-default btn">Bker</a>
+
 </div>
+
+{{summary_div|safe}}
 
 </div>
 

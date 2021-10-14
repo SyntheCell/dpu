@@ -12,6 +12,8 @@ import json
 import traceback
 from scipy import stats
 from socketIO_client import SocketIO, BaseNamespace
+import threading
+import requests
 
 import custom_script
 from custom_script import EXP_NAME, PUMP_CAL_FILE
@@ -26,6 +28,7 @@ VIALS = [x for x in range(16)]
 SAVE_PATH = os.path.dirname(os.path.realpath(__file__))
 EXP_DIR = os.path.join(SAVE_PATH, EXP_NAME)
 OD_CAL_PATH = os.path.join(SAVE_PATH, 'od_cal.json')
+OD_RAW_ZERO_PATH =  os.path.join(SAVE_PATH, 'od_raw_zero.json')
 TEMP_CAL_PATH = os.path.join(SAVE_PATH, 'temp_cal.json')
 
 SIGMOID = 'sigmoid'
@@ -69,7 +72,6 @@ class EvolverNamespace(BaseNamespace):
         with open(TEMP_CAL_PATH) as f:
             temp_cal = json.load(f)
 
-        # apply calibrations
         # update temperatures if needed
         data = self.transform_data(data, VIALS, od_cal, temp_cal)
         if data is None:
@@ -77,14 +79,40 @@ class EvolverNamespace(BaseNamespace):
                          'defined functions')
             return
 
+        # Store the OD blank depending on the options set (Raw blank, OD blank or none)
         # should we "blank" the OD?
-        if self.use_blank and self.OD_initial is None:
-            logger.info('setting initial OD reading')
-            self.OD_initial = data['transformed']['od']
-        elif self.OD_initial is None:
-            self.OD_initial = np.zeros(len(VIALS))
-        data['transformed']['od'] = (data['transformed']['od'] -
-                                        self.OD_initial)
+        if self.OD_initial is None:
+            if self.use_blank and self.use_raw_blank:
+                logger.info('setting initial OD reading (raw_values)')
+                """
+                    Given Raw_cal_0, Raw_exp_0 and Raw_exp_t
+                    We can calculate delta as:
+                    delta = Raw_expt_t - Raw_exp_0
+                    And therefore calculate the OD as:
+                    OD = f(Raw_cal_0 + delta)
+                    Which extended is:
+                    OD = f(Raw_cal_0 - Raw_expt_0 + Raw_expt_t
+                    So we can store "Raw_cal_0 - Raw_expt_0" in self.OD_initial
+                    And add it to the measured Raw_expt_t before calculating the final OD
+                """
+                # get calibration raw blank
+                with open(OD_RAW_ZERO_PATH, 'r') as f:
+                    zero_cal_values = np.array(json.load(f))
+
+                self.OD_initial = zero_cal_values - np.array(
+                    [float(x) for x in data['data']['od_135']])  # TODO: generalize for other od parameters
+
+            elif self.use_blank:  # This used to be the normal procedure
+                logger.info('setting initial OD reading (OD values)')
+                data = self.apply_OD_calibration(data, VIALS, od_cal)
+                self.OD_initial = data['transformed']['od']
+
+            else:
+                self.OD_initial = np.zeros(len(VIALS))
+
+        # Apply calibration and blank (If it's raw blank, before cal. If it's OD blank, after cal.)
+        data = self.apply_OD_calibration(data, VIALS, od_cal)
+
         # save data
         self.save_data(data['transformed']['od'], elapsed_time,
                         VIALS, 'OD')
@@ -100,7 +128,7 @@ class EvolverNamespace(BaseNamespace):
         # run custom functions
         self.custom_functions(data, VIALS, elapsed_time)
         # save variables
-        self.save_variables(self.start_time, self.OD_initial)
+        self.save_variables(self.start_time, self.OD_initial, self.use_raw_blank)
 
     def on_activecalibrations(self, data):
         print('Calibrations recieved')
@@ -124,7 +152,41 @@ class EvolverNamespace(BaseNamespace):
                                         x,
                                         time.strftime("%c"))
                                 self._create_file(x, param + '_raw', defaults=[exp_str])
+                        try:
+                            if calibration['calibrationType'] == 'od' and param == 'od_135': # TODO: generalize for other od parameters
+                                # Fetch raw calibration values for OD = 0
+                                zero_cal_raw = []
+                                for x in calibration['raw']:
+                                    if x['param'] == 'od_135':
+                                        raw_cal_values = x['vialData']
+
+                                for c, od_list in enumerate(calibration['measuredData']):
+                                    ind = od_list.index(0)
+                                    zero_cal_raw.append(sum(raw_cal_values[c][ind]) / 3)  # Store the mean raw zero value
+
+                                with open(OD_RAW_ZERO_PATH, 'w') as f:
+                                    json.dump(zero_cal_raw, f)
+                        except Exception as e:
+                            logger.error(f"Error '{e}' when calculating zero raw values of the calibration.")
+                            logger.INFO("Changing to former OD blank method.")
+                            print(e)
+                            self.use_raw_blank = False
                     break
+
+    def on_commandbroadcast(self, data):
+        try:
+            if data["param"] == "pump":
+                d = 0
+                vials = []
+                for c, v in enumerate(data["value"][:16]):
+                    if v != '--':
+                        d += float(v)
+                        vials.append(c)
+                if d > 0:
+                    print(f"Dilution command received for vials {vials}")
+                    logger.info(f"Activated pumps {data['value'][:16]}")
+        except KeyError:
+            print(data)
 
     def request_calibrations(self):
         logger.debug('requesting active calibrations')
@@ -162,36 +224,8 @@ class EvolverNamespace(BaseNamespace):
             temp_set_data = np.genfromtxt(file_path, delimiter=',')
             temp_set = temp_set_data[len(temp_set_data)-1][1]
             temps.append(temp_set)
-            od_coefficients = od_cal['coefficients'][x]
             temp_coefficients = temp_cal['coefficients'][x]
-            try:
-                if od_cal['type'] == SIGMOID:
-                    #convert raw photodiode data into ODdata using calibration curve
-                    od_data[x] = np.real(od_coefficients[2] -
-                                        ((np.log10((od_coefficients[1] -
-                                                    od_coefficients[0]) /
-                                                    (float(od_data[x]) -
-                                                    od_coefficients[0])-1)) /
-                                                    od_coefficients[3]))
-                    if not np.isfinite(od_data[x]):
-                        od_data[x] = 'NaN'
-                        logger.debug('OD from vial %d: %s' % (x, od_data[x]))
-                    else:
-                        logger.debug('OD from vial %d: %.3f' % (x, od_data[x]))
-                elif od_cal['type'] == THREE_DIMENSION:
-                    od_data[x] = np.real(od_coefficients[0] +
-                                        (od_coefficients[1]*od_data[x]) +
-                                        (od_coefficients[2]*od_data_2[x]) +
-                                        (od_coefficients[3]*(od_data[x]**2)) +
-                                        (od_coefficients[4]*od_data[x]*od_data_2[x]) +
-                                        (od_coefficients[5]*(od_data_2[x]**2)))
-                else:
-                    logger.error('OD calibration not of supported type!')
-                    od_data[x] = 'NaN'
-            except ValueError:
-                print("OD Read Error")
-                logger.error('OD read error for vial %d, setting to NaN' % x)
-                od_data[x] = 'NaN'
+
             try:
                 temp_data[x] = (float(temp_data[x]) *
                                 temp_coefficients[0]) + temp_coefficients[1]
@@ -214,9 +248,9 @@ class EvolverNamespace(BaseNamespace):
 
         temps = np.array(temps)
         # update temperatures only if difference with expected
-        # value is above 0.2 degrees celsius
+        # value is above 0.1 degrees celsius
         delta_t = np.abs(set_temp_data - temps).max()
-        if delta_t > 0.2:
+        if delta_t > 0.1:
             logger.info('updating temperatures (max. deltaT is %.2f)' %
                         delta_t)
             coefficients = temp_cal['coefficients']
@@ -228,7 +262,7 @@ class EvolverNamespace(BaseNamespace):
             # config from server agrees with local config
             # report if actual temperature doesn't match
             delta_t = np.abs(temps - temp_data).max()
-            if delta_t > 0.2:
+            if delta_t > 0.1:
                 logger.info('actual temperature doesn\'t match configuration '
                             '(yet? max deltaT is %.2f)' % delta_t)
                 logger.debug('temperature config: %s' % temps)
@@ -238,6 +272,69 @@ class EvolverNamespace(BaseNamespace):
         data['transformed'] = {}
         data['transformed']['od'] = od_data
         data['transformed']['temp'] = temp_data
+        return data
+
+    def apply_OD_calibration(self, data, vials, od_cal):
+        od_data_2 = None
+        if od_cal['type'] == THREE_DIMENSION:
+            od_data_2 = data['data'].get(od_cal['params'][1], None)
+
+        od_data = data['data'].get(od_cal['params'][0], None)
+
+        if self.use_raw_blank:
+            zero_delta = self.OD_initial
+            od_blank = np.zeros(len(vials))
+        else:
+            zero_delta = np.zeros(len(vials))
+            od_blank = self.OD_initial
+
+        if od_data is None:
+            print('Incomplete data recieved, Error with measurement')
+            logger.error('Incomplete data received, error with measurements')
+            return None
+        if 'NaN' in od_data:
+            print('NaN recieved, Error with measurement')
+            logger.error('NaN received, error with measurements')
+            return None
+
+        od_data = np.array([float(x) for x in od_data])
+        if od_data_2:
+            od_data_2 = np.array([float(x) for x in od_data_2])
+
+        for x in vials:
+            od_coefficients = od_cal['coefficients'][x]
+            try:
+                if od_cal['type'] == SIGMOID:
+                    #convert raw photodiode data into ODdata using calibration curve
+                    od_data[x] = np.real(od_coefficients[2] -
+                                        ((np.log10((od_coefficients[1] -
+                                                    od_coefficients[0]) /
+                                                    (zero_delta[x] + float(od_data[x]) -
+                                                    od_coefficients[0])-1)) /
+                                                    od_coefficients[3]))
+                    if not np.isfinite(od_data[x]):
+                        od_data[x] = 'NaN'
+                        logger.debug('OD from vial %d: %s' % (x, od_data[x]))
+                    else:
+                        logger.debug('OD from vial %d: %.3f' % (x, od_data[x]))
+                elif od_cal['type'] == THREE_DIMENSION:
+                    od_data[x] = np.real(od_coefficients[0] +
+                                        (od_coefficients[1]*od_data[x]) +
+                                        (od_coefficients[2]*od_data_2[x]) +
+                                        (od_coefficients[3]*(od_data[x]**2)) +
+                                        (od_coefficients[4]*od_data[x]*od_data_2[x]) +
+                                        (od_coefficients[5]*(od_data_2[x]**2)))
+                else:
+                    logger.error('OD calibration not of supported type!')
+                    od_data[x] = 'NaN'
+            except ValueError as e:
+                print("OD Read Error")
+                #print(e)
+                logger.error('OD read error for vial %d, setting to NaN' % x)
+                od_data[x] = 'NaN'
+
+        # update od data in the data dictionary
+        data['transformed']['od'] = od_data - od_blank
         return data
 
     def update_stir_rate(self, stir_rates, immediate = False):
@@ -391,9 +488,16 @@ class EvolverNamespace(BaseNamespace):
             if exp_blank == 'y':
                 # will do it with first broadcast
                 self.use_blank = True
-                logger.info('will use initial OD measurement as blank')
+                raw_blank = input('Use raw blank instead of OD blank? (y/n): ')
+                if raw_blank == 'y':
+                    logger.info('will use initial raw measurement as blank')
+                    self.use_raw_blank = True
+                else:
+                    logger.info('will use initial OD measurement as blank')
+                    self.use_raw_blank = False
             else:
                 self.use_blank = False
+                self.use_raw_blank = False
                 self.OD_initial = np.zeros(len(vials))
         else:
             # load existing experiment
@@ -405,6 +509,7 @@ class EvolverNamespace(BaseNamespace):
             x = loaded_var
             start_time = x[0]
             self.OD_initial = x[1]
+            self.use_raw_blank = x[2]
 
         # copy current custom script to txt file
         backup_filename = '{0}_{1}.txt'.format(EXP_NAME,
@@ -435,14 +540,14 @@ class EvolverNamespace(BaseNamespace):
             text_file.write("{0},{1}\n".format(elapsed_time, data[x]))
             text_file.close()
 
-    def save_variables(self, start_time, OD_initial):
+    def save_variables(self, start_time, OD_initial, use_raw_blank):
         # save variables needed for restarting experiment later
         save_path = os.path.dirname(os.path.realpath(__file__))
         pickle_name = "{0}.pickle".format(EXP_NAME)
         pickle_path = os.path.join(EXP_DIR, pickle_name)
         logger.debug('saving all variables: %s' % pickle_path)
         with open(pickle_path, 'wb') as f:
-            pickle.dump([start_time, OD_initial], f)
+            pickle.dump([start_time, OD_initial, use_raw_blank], f)
 
     def get_flow_rate(self):
         file_path = os.path.join(SAVE_PATH, PUMP_CAL_FILE)
@@ -579,6 +684,22 @@ def get_options():
 
     return parser.parse_args()
 
+def bot_stop_warning(exception=""):
+    # TODO: Loop threading function that sends message every 10 min.
+
+    with open("creds.json") as f:
+        creds = eval(f.read())
+
+    if exception:
+        ex = f" due to an exception: '{exception}'"
+    else:
+        ex = exception
+
+    r = requests.get(f'https://api.telegram.org/bot{creds["BOT_API_KEY"]}/sendMessage',
+                     params={'chat_id': creds["chat_id"],
+                             'text': f"WARNING! eVOLVER experiment {custom_script.EXP_NAME} is stopped{ex}."
+                                     f"\neVOLVER IP: {custom_script.EVOLVER_IP}\nPlease, check and resume if needed."})
+
 if __name__ == '__main__':
     options = get_options()
 
@@ -627,20 +748,26 @@ if __name__ == '__main__':
                 reset_connection_timer = time.time()
         except KeyboardInterrupt:
             try:
+                t=None
                 print('Ctrl-C detected, pausing experiment')
                 logger.warning('interrupt received, pausing experiment')
                 EVOLVER_NS.stop_exp()
                 # stop receiving broadcasts
                 socketIO.disconnect()
                 while True:
+                    t = threading.Timer(600, bot_stop_warning)
+                    t.start()
                     key = input('Experiment paused. Press enter key to restart '
                                 ' or hit Ctrl-C again to terminate experiment')
+                    t.cancel()
                     logger.warning('resuming experiment')
                     # no need to have something like "restart_chemo" here
                     # with the new server logic
                     socketIO.connect()
                     break
             except KeyboardInterrupt:
+                if t:
+                    t.cancel()
                 print('Second Ctrl-C detected, shutting down')
                 logger.warning('second interrupt received, terminating '
                                 'experiment')
@@ -653,6 +780,7 @@ if __name__ == '__main__':
             print('error "%s" stopped the experiment' % str(e))
             traceback.print_exc(file=sys.stdout)
             EVOLVER_NS.stop_exp()
+            bot_stop_warning(e)
             print('Experiment stopped, goodbye!')
             logger.warning('experiment stopped, goodbye!')
             break
