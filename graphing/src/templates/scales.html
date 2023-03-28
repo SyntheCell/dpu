@@ -20,23 +20,23 @@
 
     <a href="{% url 'home' %}{{experiment}}/dilutions" class="btn btn-default btn">Dilutions</a>
 
-    <a href="{% url 'home' %}{{experiment}}/bker" class="btn btn-default btn">Bker</a>
+    <a href="{% url 'home' %}{{experiment}}/scales" class="btn btn-default btn">Scales</a>
 
 </div>
 
 <br>
 
 <div>
-    {% if balances %}
-        <table class="table" id="balance-table">
-            <caption><b>Balances</b></caption>
-            {% for bal in balances %}
+    {% if scales %}
+        <table class="table" id="scale-table">
+            <caption><b>Scale</b></caption>
+            {% for scale in scales %}
                 {% if forloop.counter0|divisibleby:"4" %}
                     </tr>
                     <tr>
-                        <td><b>Balance {{ forloop.counter0 }}:</b> {{ bal.1 }}</td>
+                        <td><b>Scale {{ forloop.counter0 }}:</b> {{ scale.1 }}</td>
                 {% else %}
-                        <td><b>Balance {{ forloop.counter0 }}:</b> {{ bal.1 }}</td>
+                        <td><b>Scale {{ forloop.counter0 }}:</b> {{ scale.1 }}</td>
                 {% endif %}
             {% endfor %}
             </tr>
@@ -44,18 +44,20 @@
 
         <p>Data retrieved: {{ last_updated }}</p>
     {% else %}
-        <b>Could not retrieve Bker information!</b>
+        <b>Could not retrieve Scale information!</b>
+        <br>
+        <p>{{ error }}</p>
     {% endif %}
 
-    <form id="getBkerData" action="#" method="post">{% csrf_token %}
-        <input type="submit" name="get-data" form="getBkerData" class="btn btn-primary" value="GetBker">
+    <form id="getScaleData" action="#" method="post">{% csrf_token %}
+        <input type="submit" name="get-data" form="getScaleData" class="btn btn-primary" value="GetScale">
     </form>
 </div>
 
 {% if plot_div %}
     {{plot_div|safe}}
 {% else %}
-    <p>There is no local balance data. Click on the button above to retrieve.</p>
+    <p>There is no local scale data. Click on the button above to retrieve.</p>
 {% endif %}
 
 </div>

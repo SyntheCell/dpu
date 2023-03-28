@@ -1,2 +1,13 @@
-Icon
+Icon
+
 Icon?
+.DS_Store
+*_expt
+*.pyc
+
+# Experiment files that are not part of the template
+!experiment/
+experiment/*
+
+!experiment/template/
+!experiment/server_test.py

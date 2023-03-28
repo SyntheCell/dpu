@@ -94,13 +94,15 @@ class EvolverNamespace(BaseNamespace):
                     OD = f(Raw_cal_0 - Raw_expt_0 + Raw_expt_t
                     So we can store "Raw_cal_0 - Raw_expt_0" in self.OD_initial
                     And add it to the measured Raw_expt_t before calculating the final OD
+
+                    NOTE: currently, this method only works for od_135 and not od_90
                 """
                 # get calibration raw blank
                 with open(OD_RAW_ZERO_PATH, 'r') as f:
                     zero_cal_values = np.array(json.load(f))
 
                 self.OD_initial = zero_cal_values - np.array(
-                    [float(x) for x in data['data']['od_135']])  # TODO: generalize for other od parameters
+                    [float(x) for x in data['data']['od_135']])
 
             elif self.use_blank:  # This used to be the normal procedure
                 logger.info('setting initial OD reading (OD values)')
@@ -685,8 +687,6 @@ def get_options():
     return parser.parse_args()
 
 def bot_stop_warning(exception=""):
-    # TODO: Loop threading function that sends message every 10 min.
-
     with open("creds.json") as f:
         creds = eval(f.read())
 
@@ -699,6 +699,43 @@ def bot_stop_warning(exception=""):
                      params={'chat_id': creds["chat_id"],
                              'text': f"WARNING! eVOLVER experiment {custom_script.EXP_NAME} is stopped{ex}."
                                      f"\neVOLVER IP: {custom_script.EVOLVER_IP}\nPlease, check and resume if needed."})
+    if r.status_code != 200:
+        logger.error(f"Telegram bot error: {r.status_code} {r.text}")
+
+
+def check_credentials():
+    # Check if credentials file exists
+    if not os.path.isfile('creds.json'):
+        print("creds.json file not found. Please create it.")
+        sys.exit(1)
+
+    # Check if credentials file is valid
+    with open('creds.json') as f:
+        try:
+            creds = eval(f.read())
+        except SyntaxError:
+            print("Invalid creds.json file.")
+            sys.exit(1)
+    
+    # Check Telegram credentials are present
+    if not all([key in creds for key in ['BOT_API_KEY', 'chat_id']]):
+        print("Telegram bot credentials are not complete")
+        resp = input("Continue? [y/N] ")
+        if resp.lower() != 'y':
+            sys.exit(1)
+        else:
+            logger.warning('Continuing with invalid creds.json file.')
+    else:
+        # Test Telegram bot credentials
+        r = requests.get(f'https://api.telegram.org/bot{creds["BOT_API_KEY"]}/getMe')
+        if r.status_code != 200:
+            logger.error(f"Telegram bot error: {r.status_code} {r.text}")
+
+    
+    # Check balance system credentials are present
+    if not all([key in creds for key in ['bker_user', 'bker_pass']]):
+        print("Balance system credentials not provided")
+
 
 if __name__ == '__main__':
     options = get_options()
@@ -731,6 +768,9 @@ if __name__ == '__main__':
                             datefmt='%Y-%m-%d %H:%M:%S',
                             filename=options.log_name,
                             level=level)
+    
+    # Check credentials
+    check_credentials()
 
     reset_connection_timer = time.time()
     while True:

@@ -17,11 +17,11 @@ EVOLVER_PORT = 8081
 
 ##### Identify pump calibration files, define initial values for temperature, stirring, volume, power settings
 
-TEMP_INITIAL = [30] * 16 #degrees C, makes 16-value list
+TEMP_INITIAL = [32] * 16 #degrees C, makes 16-value list
 #Alternatively enter 16-value list to set different values
 #TEMP_INITIAL = [30,30,30,30,32,32,32,32,34,34,34,34,36,36,36,36]
 
-STIR_INITIAL = [8] * 16 #try 8,10,12 etc; makes 16-value list
+STIR_INITIAL = [10] * 16 #try 8,10,12 etc; makes 16-value list
 #Alternatively enter 16-value list to set different values
 #STIR_INITIAL = [7,7,7,7,8,8,8,8,9,9,9,9,10,10,10,10]
 
@@ -41,7 +41,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
     stop_after_n_curves = np.inf #set to np.inf to never stop, or integer value to stop diluting after certain number of growth curves
     OD_values_to_average = 6  # Number of values to calculate the OD average
 
-    lower_thresh = [0.2] * len(vials) #to set all vials to the same value, creates 16-value list
+    lower_thresh = [0.3] * len(vials) #to set all vials to the same value, creates 16-value list
     upper_thresh = [0.4] * len(vials) #to set all vials to the same value, creates 16-value list
 
     #Alternatively, use 16 value list to set different thresholds, use 9999 for vials not being used
@@ -78,7 +78,7 @@ def turbidostat(eVOLVER, input_data, vials, elapsed_time):
         data = np.genfromtxt(ODset_path, delimiter=',')
         ODset = data[len(data)-1][1]
         ODsettime = data[len(data)-1][0]
-        num_curves=len(data)/2;
+        num_curves=len(data)/2
 
         file_name =  "vial{0}_OD.txt".format(x)
         OD_path = os.path.join(save_path, EXP_NAME, 'OD', file_name)

@@ -58,7 +58,6 @@ def vial_num(request, experiment, vial):
 
 	p = figure(plot_width=700, plot_height=400)
 	p.y_range = Range1d(-0.05, 0.5)
-	#p.x_range = Range1d(data[-1,0] - 72, data[-1,0] + 5)  # EDITDANI: Set x_range to last 72h
 	p.xaxis.axis_label = 'Hours'
 	p.yaxis.axis_label = 'Optical Density'
 	p.line(data[:,0], data[:,1], line_width=1)
@@ -86,20 +85,20 @@ def vial_num(request, experiment, vial):
 	p.x_range = od_x_range  # Set same size as the OD plot
 	p.xaxis.axis_label = 'Hours'
 	p.yaxis.axis_label = 'Generation time (h)'
-	# p.line(gr_data[:, 0], gr_data[:, 1], legend="growth rate")  # Growth rate
-	p.line(gr_data[:, 0], math.log(2) / gr_data[:, 1], legend="Generation time")  # Generation time
+	# p.line(gr_data[:, 0], gr_data[:, 1], legend="growth rate")  # NOTE: Uncomment to plot Growth rate
+	p.line(gr_data[:, 0], math.log(2) / gr_data[:, 1], legend="Generation time")  # NOTE: Uncomment to plot Generation time
 
 	# Sliding window for average growth rate calculation
 	slide_mean = []
-	wsize = 20  # Customize window size to calculate the mean
+	wsize = 10  # NOTE: Customize window size to calculate the mean
 	for i in range(0, len(gr_data[:, 1])):
 		if i - wsize < 0:
 			j = 0  # Allows plotting first incomplete windows
 		else:
 			j = i - wsize
 
-		# slide_mean.append(np.nanmean(gr_data[j:i+1, 1]))  # Growth rate
-		slide_mean.append(np.nanmean(math.log(2) / gr_data[j:i+1, 1]))  # Generation time
+		# slide_mean.append(np.nanmean(gr_data[j:i+1, 1]))  # NOTE: Uncomment to plot Growth rate
+		slide_mean.append(np.nanmean(math.log(2) / gr_data[j:i+1, 1]))  # NOTE: Uncomment to plot Generation time
 
 	p.line(gr_data[:, 0], slide_mean, legend="{0} values mean".format(wsize), line_width=1, line_color="red")
 
@@ -168,25 +167,29 @@ def expt_name(request, experiment):
 			# Chop out first gr value, biased by the diff between the initial OD and the lower_thresh
 			gr_data = gr_data[1:]
 
-		p = figure(plot_width=500, plot_height=300)
-		p.y_range = Range1d(1, 7)  # Customize here y-axis range
-		#p.x_range = od_x_range  # Set same size as the OD plot
+		p = figure(plot_width=400, plot_height=300)  # NOTE: Customize here the size of summary plots (default: 400x300)
+		p.y_range = Range1d(1, 7)  # NOTE: Customize here y-axis range
 		p.xaxis.axis_label = 'Hours'
-		p.yaxis.axis_label = 'Growth rate (1/h)'
+
+		# NOTE: Uncomment following lines to plot Growth rate
+		# p.yaxis.axis_label = 'Growth rate (1/h)'
 		# p.line(gr_data[:, 0], gr_data[:, 1], legend="growth rate")  # Growth rate
+
+		# NOTE: Uncomment following lines to plot Generation time
+		p.yaxis.axis_label = 'Generation time (h)'
 		p.line(gr_data[:, 0], math.log(2) / gr_data[:, 1], legend="Generation time")  # Generation time
 
 		# Sliding window for average growth rate calculation
 		slide_mean = []
-		wsize = 10  # Customize window size to calculate the mean
+		wsize = 10  # NOTE: Customize window size to calculate the mean
 		for i in range(0, len(gr_data[:, 1])):
 			if i - wsize < 0:
 				j = 0  # Allows plotting first incomplete windows
 			else:
 				j = i - wsize
 
-			# slide_mean.append(np.nanmean(gr_data[j:i+1, 1]))  # Growth rate
-			slide_mean.append(np.nanmean(math.log(2) / gr_data[j:i+1, 1]))  # Generation time
+			# slide_mean.append(np.nanmean(gr_data[j:i+1, 1]))  # NOTE: Uncomment to plot Growth rate
+			slide_mean.append(np.nanmean(math.log(2) / gr_data[j:i+1, 1]))  # NOTE: Uncomment to plot Generation time
 
 		p.line(gr_data[:, 0], slide_mean, legend="{0} values mean".format(wsize), line_width=1, line_color="red")
 		p.title = f"Vial {vial}"
@@ -195,17 +198,23 @@ def expt_name(request, experiment):
 
 		plts.append(p)
 
-	#print(plts)
-	#plots = gridplot([[plts[0]]])
-	#plots = gridplot([plts[i:i+2] for i in range(0, 16, 2)])
 
-	plots = gridplot([[plts[0], plts[1], plts[2]],
-					  [plts[4], plts[5], plts[6]],
-					  [plts[8], plts[9], plts[10]],
-					  [plts[12], plts[13], plts[14]],
-					  [None, plts[15], None],
-					  [plts[3], plts[7], plts[11]]])
+	# NOTE: Organise grid layout of summary plots
+	plot_grid = [[12,13,14,15], [8,9,10,11], [4,5,6,7], [0,1,2,3]]
 
+	# Convert indexes to Bokeh gridplot
+	x = []
+	for i in plot_grid:
+		y = []
+		for j in i:
+			if j != None:
+				y.append(plts[j])
+			else:
+				y.append(None)
+		x.append(y)
+
+	plots = gridplot(x)
+	
 
 	summary_script, summary_div = components(plots)
 
@@ -295,7 +304,7 @@ def dilutions(request, experiment):
 				data = np.asarray([[data[0],data[1]]])
 			volume = str(round(sum(data[:, 1]) * cal[0, vial] / 1000, 2))
 
-			dil_intervals = (len(np.genfromtxt(ODset_dir, delimiter=",", skip_header=2)) - 1) / 2
+			dil_intervals = (len(np.genfromtxt(ODset_dir, delimiter=",", skip_header=2)) - 1) / 2 
 			if dil_intervals != 0:
 				extra_dils = dil_triggered - dil_intervals
 				vial_eff = (dil_intervals - extra_dils) / dil_intervals * 100
@@ -339,7 +348,6 @@ def dilutions(request, experiment):
 			bottle_consumption = 0
 			for v in bot[1].split(","):
 				if v:
-					print(v)
 					# get bottle timestamp
 					tstamp = time.mktime(time.strptime(bot[-1], "%d/%m/%Y %H:%M"))  # Timestamp in seconds since epoch
 					tstamp -= expt_start  # Timestamp in seconds since start of experiment
@@ -347,7 +355,6 @@ def dilutions(request, experiment):
 					# get data slice from timestamp to present
 					pump_dir = os.path.join(evolver_dir, expt_subdir[0], experiment, "pump_log", f"vial{v}_pump_log.txt")
 					data = np.genfromtxt(pump_dir, delimiter=',', skip_header=2)
-					print
 					try:
 						if len(data) == 0:
 							data = np.asarray([[0,0]])
@@ -361,7 +368,6 @@ def dilutions(request, experiment):
 						bottle_consumption = -1  # Error when slicing the data
 				else:
 					bottle_consumption = -2  # Bottle has no vials assigned
-					# media += float(diluted[int(v)])  # Old way: sums all experiment consumption
 
 			bottles.append("%.2f / %sL" % (bottle_consumption, bot[-2]))
 
@@ -379,7 +385,7 @@ def dilutions(request, experiment):
 	return render(request, "dilutions.html", context)
 
 
-def bker(request, experiment):
+def scales(request, experiment):
 	sidebar_links, subdir_log = file_scan('expt')
 	vial_count = range(0, 16)
 	expt_dir, expt_subdir = file_scan(experiment)
@@ -387,24 +393,32 @@ def bker(request, experiment):
 	evolver_dir = os.path.join(rootdir, 'experiment')
 	pump_cal = os.path.join(evolver_dir, expt_subdir[0], "pump_cal.txt")
 	bottle_file = os.path.join(evolver_dir, expt_subdir[0], "bottles.txt")
-	balance_dir = os.path.join(evolver_dir, expt_subdir[0], "balances")
+	scales_dir = os.path.join(evolver_dir, expt_subdir[0], "scales")
 	expt_pickle = os.path.join(evolver_dir, expt_subdir[0], expt_dir[0], expt_dir[0] + ".pickle")
 	creds_file = os.path.join(evolver_dir, expt_subdir[0], 'creds.json')
+	conf_file = os.path.join(evolver_dir, expt_subdir[0], 'scales_config.json')
 
-	if not os.path.isdir(balance_dir):
-		os.mkdir(balance_dir)
+	if not os.path.isdir(scales_dir):
+		os.mkdir(scales_dir)
 
-	url = "http://bker.io/profil/probeDetail/"
-	probes = [5436, 5598, 5556, 5557, 5589, 5597]
-	conditions = {5436: "High Temperature",
-				  5598: "1.5M KCl",
-				  5556: 'MMPhe',
-				  5557: 'MMPro',
-				  5589: '8% EtOH',
-				  5597: 'EMM Control'}
+	url = "https://bker.io/profil/probeDetail/"
+
+	with open(conf_file) as f:
+		graph_conf = eval(f.read())
+
+	probes = graph_conf["probes"]
+	conditions = graph_conf["conditions"]
+
+	if not os.path.isfile(creds_file):
+		print("creds.json not found. Please provide login credentials for bker.io")
+		return HttpResponse("<h2>creds.json not found.<br>Please provide login credentials for bker.io</h2>")
 
 	with open(creds_file) as f:
 		creds = eval(f.read())
+
+	if "bker_user" not in creds or "bker_pass" not in creds:
+		print("One or more credentials are missing in the creds.json file. Please provide login credentials for bker.io")
+		return HttpResponse("<h2>One or more credentials are missing in the creds.json file.<br>Please provide login credentials for bker.io</h2>")
 
 	payload = {
 		"Email": creds["bker_user"],
@@ -414,17 +428,17 @@ def bker(request, experiment):
 
 	try:
 		with requests.Session() as s:
-			login_page = s.get("http://bker.io/compte/login").text
-			Token = BeautifulSoup(login_page).find("input", {"name": "__RequestVerificationToken"})['value']
+			login_page = s.get("https://bker.io/compte/login").text
+			Token = BeautifulSoup(login_page, features='html.parser').find("input", {"name": "__RequestVerificationToken"})['value']
 
 			payload["__RequestVerificationToken"] = Token
 
-			login = s.post("http://bker.io/compte/login?ReturnUrl=%2Fprofil", data=payload)
+			login = s.post("https://bker.io/compte/login?ReturnUrl=%2Fprofil", data=payload)
 
-			balances = []
+			scales = []
 			plots = []
 			for probe in probes:
-				balance = [probe]
+				scale = [probe]
 
 				r = s.get(url + str(probe))
 
@@ -432,41 +446,46 @@ def bker(request, experiment):
 				soup = BeautifulSoup(r.text, "html.parser")
 				value_div = soup.find("div", {"class": "value"})
 
-				balance.append(value_div.text.strip('\t\n\r'))
+				scale.append(value_div.text.strip('\t\n\r'))
 
-				balances.append(balance)
+				scales.append(scale)
 
 				if request.POST.get('get-data'):
-
 					# Get data files
 
 					# Get input of start time and end time -> Needs correct ISO 8601 formatting
 					# Get experiment start time
 					with open(expt_pickle, 'rb') as f:
 						dtStart = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(pickle.load(f)[0]))
-						print(dtStart)
-					#dtStart = '2020-09-02T14:48:55Z'
 					dtEnd = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.localtime(time.time()))
-					print(dtEnd)
 					headers = {
-						"exportProbeDataToCsvFilters": f'{{"idProbe":{probe},"dtStart":"{dtStart}","dtEnd":"{dtEnd}"}}'
+						"exportprobedatatocsvfilters": f'{{"idProbe":{probe},"dtStart":"{dtStart}","dtEnd":"{dtEnd}"}}',
 					}
 
-					p = s.post("http://www.bker.io/api/p/exportProbeDataToCsv", headers=headers)
+					p = s.post("https://bker.io/api/p/exportProbeDataToCsv", headers=headers)
 
-					balance_file = os.path.join(balance_dir, f"weight{probe}.csv")
-					with open(balance_file, "w") as f:
+					if p.status_code != 200:
+						print(f"Error when trying to request scale history data for probe {probe}")
+						print(p.status_code)
+						print(p.text)
+						continue
+
+					scale_file = os.path.join(scales_dir, f"weight{probe}.csv")
+					with open(scale_file, "w") as f:
 						f.write(eval(p.text))
-	except:
-		balances = [[probe, 'ConnectionError'] for probe in probes]
+	except Exception as e:
+		print("There was an exception when trying to get Bker scale data:")
+		print(e)
+
+		scales = [[probe, 'ConnectionError'] for probe in probes]
 
 	plots = []
 	for probe in probes:
-		balance_file = os.path.join(balance_dir, f"weight{probe}.csv")
+		scale_file = os.path.join(scales_dir, f"weight{probe}.csv")
 
-		if os.path.isfile(balance_file):
+		if os.path.isfile(scale_file):
 
-			with open(balance_file, 'r') as f:
+			with open(scale_file, 'r') as f:
 				data = []
 				start = None
 				for line in f.readlines()[1:]:
@@ -475,22 +494,26 @@ def bker(request, experiment):
 					line[1] = line[1] / 3600
 					line[2] = float(".".join(line[2].split(",")))  # Weight
 					data.append(line[1:])
+			if not data:
+				print("Empty local file for probe " + str(probe))
+				plots.append(None)
+				continue
+			
 			data = np.array(data)
 			data = data[data[:, 0].argsort()]  # Sort data using time and maintaining 'key' : 'value' structure
 
 			data[:, 0] -= data[0, 0]
 
 			p = figure(plot_width=600, plot_height=400, title=conditions[probe])
-			p.y_range = Range1d(-.05, 2300)
+			p.y_range = Range1d(-.05, 2300)  # NOTE: Set y range depending on the size of your bottles
 			p.xaxis.axis_label = 'Time (h)'
 			p.yaxis.axis_label = 'Weight (g)'
 			p.line(data[:, 0], data[:, 1], line_width=1)
 
 			# Sliding window for average growth rate calculation
 			#data = np.delete(data, np.argwhere(data[:,1] < 0), axis = 0)
-			flag=False
 			slide_mean = []
-			wsize = 250  # Customize window size to calculate the mean
+			wsize = 250  # NOTE: Customize window size to calculate the mean
 			for i in range(0, len(data[:, 1])):
 				if i - wsize < 0:
 					j = 0  # Allows plotting first incomplete windows
@@ -511,12 +534,6 @@ def bker(request, experiment):
 							# This seems like a breakpoint
 							consumption = data[j, 1] - data[x-1, 1] + data[x, 1] - data[i, 1]
 							slide_mean.append(consumption / (data[i, 0] - data[j, 0]))
-
-							if not flag:
-								print(conditions[probe])
-								print(data[x,0])
-								print(consumption)
-								flag = True
 							break
 					else:
 						# Breakpoint not found
@@ -530,10 +547,11 @@ def bker(request, experiment):
 
 
 			# Consumption estimation
-			#rate = (data[-50,1] - data[-1,1]) / (data[-1,0] - data[-50,0])
 			rate = slide_mean[-1]
-			p.text(x=0,y=0,text=["%.1f mL/h - %.2f h remaining"%(rate, data[-1,1]/rate)],text_font_style="bold",text_font_size="12pt")
-
+			if rate:
+				p.text(x=0, y=0, text=["%.1f mL/h - %.2f h remaining" % (rate, data[-1, 1]/rate)], text_font_style="bold", text_font_size="12pt")
+			else:
+				p.text(x=0, y=0, text=["Could not calculate consumption rate"], text_font_style="bold", text_font_size="12pt")
 
 			plots.append(p)
 
@@ -549,12 +567,12 @@ def bker(request, experiment):
 	"sidebar_links": sidebar_links,
 	"experiment": experiment,
 	"vial_count": vial_count,
-	"balances": balances,
+	"scales": scales,
 	"last_updated": last_updated,
 	"plot_script": plot_script,
 	"plot_div": plot_div
 	}
-	return render(request, "bker.html", context)
+	return render(request, "scales.html", context)
 
 
 def file_scan(tag):

@@ -156,6 +156,7 @@ def graph_2d_data(func, measured_data, medians, standard_deviations, coefficient
         ax[i // 4, (i % 4)].set_title('Vial: ' + str(i))
         ax[i // 4, (i % 4)].ticklabel_format(style='sci', axis='y', scilimits=(0,1))
 
+        # NOTE: Modify the following parameters to change the display of the graph depending on the calibration type
         if "od_135" in params:
             ax[i // 4, (i % 4)].set_xlim([-.1, 0.8])
             ax[i // 4, (i % 4)].set_ylim([0, 60000])

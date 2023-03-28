@@ -27,42 +27,42 @@ class EvolverNamespace(BaseNamespace):
         print(data)       
 
 def run_test(time_to_wait, selection):
-	time.sleep(time_to_wait)
-	print('Sending data...')
-	# Send temp	
-	data = {'param': 'temp', 'value': [4095] * 16, 'immediate': True}
-	print(data)
-	evolver_ns.emit('command', data, namespace = '/dpu-evolver')
+    time.sleep(time_to_wait)
+    print('Sending data...')
+    # Send temp	
+    data = {'param': 'temp', 'value': [4095] * 16, 'immediate': True}
+    print(data)
+    evolver_ns.emit('command', data, namespace = '/dpu-evolver')
 
-	# Send stir
-	data = {'param': 'stir', 'value': STIR_VALUES[selection], 'immediate': True}
-	print(data)
-	evolver_ns.emit('command', data, namespace = '/dpu-evolver')
+    # Send stir
+    data = {'param': 'stir', 'value': STIR_VALUES[selection], 'immediate': True}
+    print(data)
+    evolver_ns.emit('command', data, namespace = '/dpu-evolver')
 
-	# Set things for the next one
-	selection = 1 - selection
-	time_to_wait = random.randint(1, 31)
-	print('Seconds to wait: ' + str(time_to_wait))
-	run_test(time_to_wait, selection)
+    # Set things for the next one
+    selection = 1 - selection
+    time_to_wait = random.randint(1, 31)
+    print('Seconds to wait: ' + str(time_to_wait))
+    run_test(time_to_wait, selection)
 
 def start_background_loop(loop):
     asyncio.set_event_loop(loop)
     loop.run_forever()
 
 def run_client():
-	global evolver_ns, socketIO
-	socketIO = SocketIO(EVOLVER_IP, EVOLVER_PORT)
-	evolver_ns = socketIO.define(EvolverNamespace, '/dpu-evolver')
-	socketIO.wait()
+    global evolver_ns, socketIO
+    socketIO = SocketIO(EVOLVER_IP, EVOLVER_PORT)
+    evolver_ns = socketIO.define(EvolverNamespace, '/dpu-evolver')
+    socketIO.wait()
 
 if __name__ == '__main__':
-	try:
-	    new_loop = asyncio.new_event_loop()
-	    t = Thread(target = start_background_loop, args = (new_loop,))
-	    t.daemon = True
-	    t.start()
-	    new_loop.call_soon_threadsafe(run_client)
-	    time.sleep(5)
-	    run_test(0, 0)
-	except KeyboardInterrupt:
-		socketIO.disconnect()
+    try:
+        new_loop = asyncio.new_event_loop()
+        t = Thread(target = start_background_loop, args = (new_loop,))
+        t.daemon = True
+        t.start()
+        new_loop.call_soon_threadsafe(run_client)
+        time.sleep(5)
+        run_test(0, 0)
+    except KeyboardInterrupt:
+        socketIO.disconnect()
